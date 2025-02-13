@@ -91,3 +91,95 @@ public class StaticTransactionTypeCodeDescLoaderTest {
 }
 
 
+
+
+
+
+
+
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Map;
+import java.util.HashMap;
+
+import javax.sql.DataSource;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
+
+@ExtendWith(MockitoExtension.class)
+class StaticTransactionTypeCodeDescLoaderTest {
+
+    @Mock
+    private DataSource mockDataSource;
+
+    @Mock
+    private JdbcTemplate mockJdbcTemplate;
+
+    @InjectMocks
+    private StaticTransactionTypeCodeDescLoader loader;
+
+    @BeforeEach
+    void setUp() {
+        loader = new StaticTransactionTypeCodeDescLoader(mockDataSource);
+    }
+
+    @Test
+    void testGenerateKey() {
+        String key = loader.generatekey("SRC1", "SYS1", "Y");
+        assertEquals("SRC1/SYS1/Y", key);
+
+        key = loader.generatekey(null, "SYS1", "N");
+        assertEquals("NULL/SYS1/N", key);
+
+        key = loader.generatekey("SRC1", null, null);
+        assertEquals("SRC1/NULL/NULL", key);
+    }
+
+    @Test
+    void testGetValue() {
+        Map<String, String> transactionTypeCodeDescTable = new HashMap<>();
+        transactionTypeCodeDescTable.put("SRC1/SYS1/Y", "Transaction Desc 1");
+        transactionTypeCodeDescTable.put("SRC2/SYS2/N", "Transaction Desc 2");
+
+        // Injecting the map manually since it's private
+        loader.transactionTypeCodeDescTable.putAll(transactionTypeCodeDescTable);
+
+        assertEquals("Transaction Desc 1", loader.getValue("SRC1", "SYS1", "Y"));
+        assertEquals("Transaction Desc 2", loader.getValue("SRC2", "SYS2", "N"));
+        assertNull(loader.getValue("SRC3", "SYS3", "N"));
+    }
+
+    @Test
+    void testDatabaseLoading() throws SQLException {
+        String sql = "select SOURCE VALUE, SOURCE SYSTEM CD, CASH IND, TXN TYPE DESC from TXN TYPE_CODE_DESC";
+
+        doAnswer(invocation -> {
+            RowCallbackHandler handler = invocation.getArgument(1);
+            ResultSet rs = mock(ResultSet.class);
+
+            when(rs.getString("SOURCE_VALUE")).thenReturn("SRC1");
+            when(rs.getString("SOURCE_SYSTEM_CD")).thenReturn("SYS1");
+            when(rs.getString("CASH_IND")).thenReturn("Y");
+            when(rs.getString("TXN_TYPE_DESC")).thenReturn("Transaction Desc");
+
+            handler.processRow(rs);
+            return null;
+        }).when(mockJdbcTemplate).query(eq(sql), any(RowCallbackHandler.class));
+
+        loader = new StaticTransactionTypeCodeDescLoader(mockDataSource);
+        assertEquals("Transaction Desc", loader.getValue("SRC1", "SYS1", "Y"));
+    }
+}
+
+
