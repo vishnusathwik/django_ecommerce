@@ -269,3 +269,85 @@ class StaticTransactionTypeCodeDescLoaderTest {
 }
 
 
+
+
+
+
+
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.lang.reflect.Field;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.sql.DataSource;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
+
+@ExtendWith(MockitoExtension.class)
+class StaticTransactionTypeCodeDescLoaderTest {
+
+    @Mock
+    private DataSource mockDataSource;
+
+    @Mock
+    private JdbcTemplate mockJdbcTemplate;
+
+    private StaticTransactionTypeCodeDescLoader loader;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        // Initialize loader with mock DataSource
+        loader = new StaticTransactionTypeCodeDescLoader(mockDataSource);
+
+        // Use reflection to replace JdbcTemplate with mockJdbcTemplate
+        Field jdbcTemplateField = StaticTransactionTypeCodeDescLoader.class.getDeclaredField("template");
+        jdbcTemplateField.setAccessible(true);
+        jdbcTemplateField.set(loader, mockJdbcTemplate);
+    }
+
+    @Test
+    void testGenerateKey() {
+        String key = loader.generatekey("SRC1", "SYS1", "Y");
+        assertEquals("SRC1/SYS1/Y", key);
+    }
+
+    @Test
+    void testGetValue() {
+        loader.transactionTypeCodeDescTable.put("SRC1/SYS1/Y", "Transaction Desc");
+        assertEquals("Transaction Desc", loader.getValue("SRC1", "SYS1", "Y"));
+    }
+
+    @Test
+    void testDatabaseLoading() throws SQLException {
+        String sql = "select SOURCE VALUE, SOURCE SYSTEM CD, CASH IND, TXN TYPE DESC from TXN TYPE_CODE_DESC";
+
+        doAnswer(invocation -> {
+            RowCallbackHandler handler = invocation.getArgument(1);
+            ResultSet rs = mock(ResultSet.class);
+
+            when(rs.getString("SOURCE_VALUE")).thenReturn("SRC1");
+            when(rs.getString("SOURCE_SYSTEM_CD")).thenReturn("SYS1");
+            when(rs.getString("CASH_IND")).thenReturn("Y");
+            when(rs.getString("TXN_TYPE_DESC")).thenReturn("Transaction Desc");
+
+            handler.processRow(rs);
+            return null;
+        }).when(mockJdbcTemplate).query(eq(sql), any(RowCallbackHandler.class));
+
+        assertEquals("Transaction Desc", loader.getValue("SRC1", "SYS1", "Y"));
+    }
+}
+
+
